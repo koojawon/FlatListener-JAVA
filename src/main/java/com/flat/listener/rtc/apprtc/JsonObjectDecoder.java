@@ -2,7 +2,7 @@ package com.flat.listener.rtc.apprtc;
 
 import static java.util.Objects.nonNull;
 
-import com.flat.listener.message.entity.RequestMessage;
+import com.flat.listener.message.entity.FileRequestMessage;
 import com.flat.listener.rtc.apprtc.RabbitMessage.ID;
 import com.flat.listener.rtc.model.Contact;
 import com.google.gson.JsonObject;
@@ -15,8 +15,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Slf4j
-public class AppRTCJsonCodec {
-    public RabbitMessage toJavaMessage(String json) {
+public class JsonObjectDecoder {
+    public RabbitMessage toRabbitMessage(String json) {
         JsonObject jsonObject = JsonParser.parseString(json).getAsJsonObject();
         String response = null;
         if (jsonObject.has("response")) {
@@ -24,31 +24,32 @@ public class AppRTCJsonCodec {
         }
 
         if (nonNull(response) && response.equals("rejected")) {
-            return new RabbitMessage(ID.ERROR, jsonObject.get("description").getAsJsonObject());
+            log.error(response + " : " + jsonObject.get("message").getAsString());
+            return new RabbitMessage(ID.ERROR, jsonObject.get("message").getAsString());
         }
 
         String type = jsonObject.get("id").getAsString();
 
         return switch (type) {
-            case "iceCandidate" -> new RabbitMessage(ID.iceCandidate, toJavaCandidate(jsonObject));
-            case "viewerResponse" -> new RabbitMessage(ID.viewerResponse, toJavaSessionDescription(jsonObject));
+            case "iceCandidate" -> new RabbitMessage(ID.iceCandidate, toIceCandidate(jsonObject));
+            case "viewerResponse" -> new RabbitMessage(ID.viewerResponse, toSessionDescription(jsonObject));
             case "stopCommunication" -> new RabbitMessage(ID.stopCommunication);
-            case "targetInfo" -> new RabbitMessage(ID.targetInfo, toJavaTargetInfo(jsonObject));
-            case "File" -> new RabbitMessage(ID.File, toJavaFileInfo(jsonObject));
+            case "targetInfo" -> new RabbitMessage(ID.targetInfo, toContact(jsonObject));
+            case "File" -> new RabbitMessage(ID.File, toFileRequestMessage(jsonObject));
             default -> new RabbitMessage(ID.ERROR, "Unexpected message: " + json);
         };
     }
 
-    private Contact toJavaTargetInfo(JsonObject jsonObject) {
+    private Contact toContact(JsonObject jsonObject) {
         return new Contact(jsonObject.get("targetId").getAsString());
     }
 
 
-    private RequestMessage toJavaFileInfo(JsonObject json) {
-        return RequestMessage.builder().fileUid(json.get("fileUid").getAsString()).build();
+    private FileRequestMessage toFileRequestMessage(JsonObject json) {
+        return FileRequestMessage.builder().fileUid(json.get("fileUid").getAsString()).build();
     }
 
-    private RTCIceCandidate toJavaCandidate(JsonObject json) {
+    private RTCIceCandidate toIceCandidate(JsonObject json) {
         JsonObject candidate = json.get("candidate").getAsJsonObject();
         return new RTCIceCandidate(
                 candidate.get("sdpMid").getAsString(),
@@ -56,11 +57,8 @@ public class AppRTCJsonCodec {
                 candidate.get("candidate").getAsString());
     }
 
-    private RTCSessionDescription toJavaSessionDescription(JsonObject json) {
-        log.info("sdp answer is :" + json.get("sdpAnswer").getAsString());
-        return new RTCSessionDescription(
-                RTCSdpType.ANSWER,
-                json.get("sdpAnswer").getAsString());
+    private RTCSessionDescription toSessionDescription(JsonObject json) {
+        return new RTCSessionDescription(RTCSdpType.ANSWER, json.get("sdpAnswer").getAsString());
     }
 
 }
