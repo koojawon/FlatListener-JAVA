@@ -3,8 +3,6 @@ package com.flat.listener.rtc.apprtc;
 import com.flat.listener.rtc.SignalingClient;
 import com.flat.listener.rtc.SignalingListener;
 import com.flat.listener.rtc.model.Contact;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import lombok.RequiredArgsConstructor;
@@ -17,9 +15,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class AppRTCSignalingClient implements SignalingClient {
+public class FlatSignalingClient implements SignalingClient {
 
-    private final Gson gson = new Gson();
     @Value("${rabbitmq.routing.key}")
     private String routingKey;
     @Value("${rabbitmq.exchange.name}")
@@ -28,6 +25,9 @@ public class AppRTCSignalingClient implements SignalingClient {
     private RabbitTemplate rabbitTemplate;
     private SignalingListener listener;
 
+    @Autowired
+    private JsonObjectEncoder encoder;
+
 
     @Override
     public void joinRoom(Contact asContact) throws Exception {
@@ -35,37 +35,20 @@ public class AppRTCSignalingClient implements SignalingClient {
     }
 
     @Override
-    public void send(Contact contact, Object obj, String uuid) {
-        if (obj instanceof RTCSessionDescription desc) {
-            sendOfferSdp(contact, desc, uuid);
-        } else if (obj instanceof RTCIceCandidate) {
-            sendIceCandidate((RTCIceCandidate) obj, uuid);
-        }
-    }
-
-    @Override
     public void setSignalingListener(SignalingListener listener) {
         this.listener = listener;
     }
 
-    private void sendOfferSdp(Contact contact, RTCSessionDescription sdp, String uuid) {
-        JsonObject jsonObject = new JsonObject();
-        jsonObject.addProperty("id", "viewer");
-        jsonObject.addProperty("uuid", uuid);
-        jsonObject.addProperty("targetId", contact.getId());
-        jsonObject.addProperty("sdpOffer", sdp.sdp);
-
-        rabbitTemplate.convertAndSend(exchangeName, routingKey, gson.toJson(jsonObject));
+    @Override
+    public void sendSdpOffer(Contact contact, RTCSessionDescription sdp, String uuid) {
+        String offer = encoder.toOfferJson(contact, sdp, uuid);
+        rabbitTemplate.convertAndSend(exchangeName, routingKey, offer);
     }
 
-    private void sendIceCandidate(final RTCIceCandidate candidate, String uuid) {
-        JsonObject jsonObject = new JsonObject();
-        jsonObject.addProperty("id", "iceCandidate");
-        jsonObject.addProperty("uuid", uuid);
-        jsonObject.addProperty("candidate", candidate.sdp);
-        jsonObject.addProperty("sdpMid", candidate.sdpMid);
-        jsonObject.addProperty("sdpMLineIndex", candidate.sdpMLineIndex);
-        rabbitTemplate.convertAndSend(exchangeName, routingKey, gson.toJson(jsonObject));
+    @Override
+    public void sendIceCandidate(final RTCIceCandidate candidate, String uuid) {
+        String iceCandidate = encoder.toIceCandidateJson(candidate, uuid);
+        rabbitTemplate.convertAndSend(exchangeName, routingKey, iceCandidate);
     }
 
     public void addIceCandidate(Contact contact, RabbitMessage sigMessage) {
