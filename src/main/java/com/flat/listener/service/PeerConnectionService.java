@@ -27,8 +27,6 @@ public class PeerConnectionService implements SignalingListener {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    private final Configuration config;
-
     private final SignalingClient signalingClient;
 
     private final PeerConnectionContext peerConnectionContext;
@@ -40,13 +38,9 @@ public class PeerConnectionService implements SignalingListener {
 
     @Autowired
     PeerConnectionService(Configuration config, SignalingClient client) {
-        this.config = config;
-
         signalingClient = client;
         signalingClient.setSignalingListener(this);
-
         connections = new HashMap<>();
-
         peerConnectionContext = new PeerConnectionContext();
         peerConnectionContext.audioDirection = RTCRtpTransceiverDirection.RECV_ONLY;
     }
@@ -54,11 +48,8 @@ public class PeerConnectionService implements SignalingListener {
     @Override
     public void onRoomJoined(Contact contact) {
         activeContact = contact;
-        config.getRtcConfiguration().iceServers.clear();
-
         CompletableFuture.runAsync(() -> {
-            var peerConnectionClient = createPeerConnection(activeContact);
-            getPeerConnectionClient(activeContact).initCall();
+            createPeerConnection(activeContact).initCall();
             enableStats(true);
         }).join();
     }
@@ -82,12 +73,6 @@ public class PeerConnectionService implements SignalingListener {
         });
     }
 
-    @Override
-    public void onRemoteIceCandidatesRemoved(Contact contact, RTCIceCandidate[] candidates) {
-        CompletableFuture.runAsync(() -> {
-            getPeerConnectionClient(contact).removeIceCandidates(candidates);
-        });
-    }
 
     @Override
     public void onError(String message) {
@@ -101,7 +86,6 @@ public class PeerConnectionService implements SignalingListener {
 
     public CompletableFuture<Void> sendMessage(String message, Contact toContact) {
         var peerConnectionClient = getPeerConnectionClient(toContact);
-
         return peerConnectionClient.sendMessage(message);
     }
 
