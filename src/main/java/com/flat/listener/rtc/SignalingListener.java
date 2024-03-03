@@ -15,9 +15,5 @@ public interface SignalingListener {
 
     void onRemoteIceCandidate(Contact contact, RTCIceCandidate candidate);
 
-    void onRemoteIceCandidatesRemoved(Contact contact,
-                                      RTCIceCandidate[] candidates);
-
-
     void onError(String message);
 }
