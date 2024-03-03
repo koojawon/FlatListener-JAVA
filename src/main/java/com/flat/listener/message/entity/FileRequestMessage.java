@@ -7,6 +7,6 @@ import lombok.RequiredArgsConstructor;
 @Data
 @Builder
 @RequiredArgsConstructor
-public class RequestMessage {
+public class FileRequestMessage {
     private final String fileUid;
 }
