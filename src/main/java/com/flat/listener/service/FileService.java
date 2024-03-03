@@ -1,6 +1,6 @@
 package com.flat.listener.service;
 
-import com.flat.listener.message.entity.RequestMessage;
+import com.flat.listener.message.entity.FileRequestMessage;
 import jakarta.annotation.PostConstruct;
 import java.io.File;
 import java.nio.file.Paths;
@@ -45,7 +45,7 @@ public class FileService {
         }
     }
 
-    public void getFile(RequestMessage requestMessage) {
+    public void getFile(FileRequestMessage fileRequestMessage) {
 
         Flux<DataBuffer> dataBuffer = webClient
                 .get()
@@ -53,7 +53,7 @@ public class FileService {
                         .scheme("http")
                         .host(ip)
                         .path("/files/pdf")
-                        .queryParam("fileUid", requestMessage.getFileUid()).build())
+                        .queryParam("fileUid", fileRequestMessage.getFileUid()).build())
                 .retrieve()
                 .onStatus(
                         httpStatus ->
@@ -71,16 +71,16 @@ public class FileService {
                     log.error(throwable.getMessage());
                     return Mono.error(new RuntimeException(throwable));
                 });
-        saveFile(dataBuffer, requestMessage);
+        saveFile(dataBuffer, fileRequestMessage);
     }
 
-    private void saveFile(Flux<DataBuffer> dataBuffer, RequestMessage requestMessage) {
+    private void saveFile(Flux<DataBuffer> dataBuffer, FileRequestMessage fileRequestMessage) {
         log.info("saving file");
-        log.info(Paths.get(path + requestMessage.getFileUid() + ".pdf").toString());
-        DataBufferUtils.write(dataBuffer, Paths.get(path + requestMessage.getFileUid() + ".pdf"),
+        log.info(Paths.get(path + fileRequestMessage.getFileUid() + ".pdf").toString());
+        DataBufferUtils.write(dataBuffer, Paths.get(path + fileRequestMessage.getFileUid() + ".pdf"),
                         StandardOpenOption.CREATE)
                 .share()
-                .doOnSuccess(unused -> handlePdf(requestMessage.getFileUid()))
+                .doOnSuccess(unused -> handlePdf(fileRequestMessage.getFileUid()))
                 .doOnError(exception -> {
                     log.error(exception.getMessage());
                     Mono.error(new RuntimeException(exception));
