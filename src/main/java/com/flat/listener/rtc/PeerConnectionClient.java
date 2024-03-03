@@ -4,9 +4,9 @@ import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 import com.flat.listener.config.Configuration;
+import com.flat.listener.rtc.model.AIProcess;
 import com.flat.listener.rtc.model.Contact;
 import com.flat.listener.rtc.model.PeerConnectionContext;
-import com.google.gson.JsonObject;
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver;
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.PeerConnectionObserver;
@@ -16,11 +16,12 @@ import dev.onvoid.webrtc.RTCDataChannelInit;
 import dev.onvoid.webrtc.RTCDataChannelObserver;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCIceConnectionState;
+import dev.onvoid.webrtc.RTCIceGatheringState;
+import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCOfferOptions;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionIceErrorEvent;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
-import dev.onvoid.webrtc.RTCRtpReceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCSessionDescription;
@@ -38,21 +39,26 @@ import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Flow.Subscriber;
+import java.util.concurrent.Flow.Subscription;
 import java.util.function.BiConsumer;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class PeerConnectionClient implements PeerConnectionObserver {
+public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<String> {
 
     private final ExecutorService executor;
     private final Configuration config;
     private final Contact contact;
     private final SignalingClient signalingClient;
     private final PeerConnectionContext peerConnectionContext;
+    private final AIProcess aiProcess;
     private Timer statsTimer;
     private PeerConnectionFactory factory;
     private RTCPeerConnection peerConnection;
+    private RTCDataChannel remoteDataChannel;
     private RTCDataChannel dataChannel;
+    private Subscription subscription;
     /*
      * Queued remote ICE candidates are consumed only after both local and
      * remote descriptions are set. Similarly local ICE candidates are sent to
@@ -70,11 +76,15 @@ public class PeerConnectionClient implements PeerConnectionObserver {
         this.signalingClient = signalingClient;
         this.executor = executor;
         this.queuedRemoteCandidates = new ArrayList<>();
+        this.aiProcess = new AIProcess();
 
-//        RTCIceServer rtcIceServer = new RTCIceServer();
-//        rtcIceServer.urls.add("localhost:3478");
-//        rtcIceServer.urls.add("localhost:5349");
-//        config.getRtcConfiguration().iceServers.add(rtcIceServer);
+        RTCIceServer rtcIceServer = new RTCIceServer();
+        rtcIceServer.urls.add("turn:3.38.65.165:3478");
+        rtcIceServer.urls.add("stun:3.38.65.165:3478");
+        rtcIceServer.hostname = "flatmusic.net";
+        rtcIceServer.username = "turnUser";
+        rtcIceServer.password = "baseUser";
+        config.getRtcConfiguration().iceServers.add(rtcIceServer);
 
         executeAndWait(() -> {
             factory = new PeerConnectionFactory();
@@ -87,13 +97,9 @@ public class PeerConnectionClient implements PeerConnectionObserver {
             try {
                 statsTimer = new Timer();
                 statsTimer.schedule(new TimerTask() {
-
                     @Override
                     public void run() {
                         getStats();
-                        log.info("Connection state: " + peerConnection.getConnectionState().toString());
-                        log.info("Ice Connection state: " + peerConnection.getIceConnectionState().toString());
-                        log.info("Ice Gathering state: " + peerConnection.getIceGatheringState().toString());
                     }
                 }, 0, periodMs);
             } catch (Exception e) {
@@ -102,17 +108,6 @@ public class PeerConnectionClient implements PeerConnectionObserver {
         } else {
             statsTimer.cancel();
         }
-    }
-
-
-    public boolean hasRemoteAudioStream() {
-        RTCRtpReceiver[] receivers = peerConnection.getReceivers();
-        if (nonNull(receivers)) {
-            for (RTCRtpReceiver receiver : receivers) {
-                log.info(receiver.getTrack().getId() + ":" + receiver.getTrack().getKind());
-            }
-        }
-        return false;
     }
 
     @Override
@@ -125,20 +120,26 @@ public class PeerConnectionClient implements PeerConnectionObserver {
 
     @Override
     public void onIceCandidateError(RTCPeerConnectionIceErrorEvent event) {
-        PeerConnectionObserver.super.onIceCandidateError(event);
         log.error(event.getErrorText());
+        PeerConnectionObserver.super.onIceCandidateError(event);
     }
+
 
     @Override
     public void onIceConnectionChange(RTCIceConnectionState state) {
         PeerConnectionObserver.super.onIceConnectionChange(state);
-        log.info(state.toString());
+        log.info("ice state changed : " + state.toString());
     }
 
+    @Override
+    public void onIceGatheringChange(RTCIceGatheringState state) {
+        PeerConnectionObserver.super.onIceGatheringChange(state);
+        log.info("gathering state changed : " + state.toString());
+    }
 
     @Override
     public void onConnectionChange(RTCPeerConnectionState state) {
-        notify(peerConnectionContext.onPeerConnectionState, state);
+        log.info("connection state changed : " + state.toString());
     }
 
 
@@ -150,7 +151,7 @@ public class PeerConnectionClient implements PeerConnectionObserver {
         }
 
         try {
-            signalingClient.send(contact, candidate, peerConnectionContext.uniqueId);
+            signalingClient.sendIceCandidate(candidate, peerConnectionContext.uniqueId);
         } catch (Exception e) {
             log.error("Send RTCIceCandidate failed", e);
         }
@@ -158,40 +159,30 @@ public class PeerConnectionClient implements PeerConnectionObserver {
 
     @Override
     public void onIceCandidatesRemoved(RTCIceCandidate[] candidates) {
-        if (isNull(peerConnection)) {
-            log.error("PeerConnection was not initialized");
-            return;
-        }
 
-        try {
-            signalingClient.send(contact, candidates, peerConnectionContext.uniqueId);
-        } catch (Exception e) {
-            log.error("Send removed RTCIceCandidates failed", e);
-        }
+    }
+
+
+    @Override
+    public void onDataChannel(RTCDataChannel dataChannel) {
+        remoteDataChannel = dataChannel;
+        log.info("received remote channel!!");
+        initDataChannel(dataChannel);
     }
 
     @Override
     public void onTrack(RTCRtpTransceiver transceiver) {
         MediaStreamTrack track = transceiver.getReceiver().getTrack();
-        log.info("found track");
+        log.info("found track : {}", track.getKind());
         if (track.getKind().equals(MediaStreamTrack.AUDIO_TRACK_KIND)) {
             AudioTrack audioTrack = (AudioTrack) track;
+            aiProcess.start();
+            aiProcess.asPublisher().subscribe(this);
             audioTrack.addSink((bytes, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames) -> {
+                aiProcess.writeData(bytes);
             });
-
-            notify(peerConnectionContext.onRemoteVideoStream, true);
         }
     }
-
-    @Override
-    public void onRemoveTrack(RTCRtpReceiver receiver) {
-        MediaStreamTrack track = receiver.getTrack();
-
-        if (track.getKind().equals(MediaStreamTrack.AUDIO_TRACK_KIND)) {
-            notify(peerConnectionContext.onRemoteVideoStream, false);
-        }
-    }
-
 
     public CompletableFuture<Void> close() {
         return CompletableFuture.runAsync(() -> {
@@ -204,6 +195,12 @@ public class PeerConnectionClient implements PeerConnectionObserver {
                 dataChannel.dispose();
                 dataChannel = null;
             }
+            if (nonNull(remoteDataChannel)) {
+                remoteDataChannel.unregisterObserver();
+                remoteDataChannel.close();
+                remoteDataChannel.dispose();
+                remoteDataChannel = null;
+            }
             if (nonNull(peerConnection)) {
                 peerConnection.close();
                 peerConnection = null;
@@ -211,6 +208,13 @@ public class PeerConnectionClient implements PeerConnectionObserver {
             if (nonNull(factory)) {
                 factory.dispose();
                 factory = null;
+            }
+            if (nonNull(subscription)) {
+                subscription.cancel();
+                subscription = null;
+            }
+            if (nonNull(aiProcess)) {
+                aiProcess.stopRead();
             }
         }, executor);
     }
@@ -228,15 +232,10 @@ public class PeerConnectionClient implements PeerConnectionObserver {
             if (isNull(dataChannel)) {
                 throw new CompletionException("RTCDataChannel was not initialized or negotiated", null);
             }
-
             try {
-                JsonObject jsonObject = new JsonObject();
-                jsonObject.addProperty("stamp", message);
-                String encoded = jsonObject.toString();
-
-                ByteBuffer data = ByteBuffer.wrap(encoded.getBytes(StandardCharsets.UTF_8));
+                ByteBuffer data = ByteBuffer.wrap(message.getBytes(StandardCharsets.UTF_8));
                 RTCDataChannelBuffer buffer = new RTCDataChannelBuffer(data, false);
-
+                log.info(message);
                 dataChannel.send(buffer);
             } catch (Exception e) {
                 throw new CompletionException(e);
@@ -249,42 +248,23 @@ public class PeerConnectionClient implements PeerConnectionObserver {
     }
 
     private void addAudio(RTCRtpTransceiverDirection direction) {
-        if (direction == RTCRtpTransceiverDirection.INACTIVE) {
-            return;
-        }
         AudioOptions audioOptions = new AudioOptions();
-
-        if (direction != RTCRtpTransceiverDirection.SEND_ONLY) {
-            audioOptions.echoCancellation = true;
-            audioOptions.noiseSuppression = true;
-        }
-
         AudioTrackSource audioSource = factory.createAudioSource(audioOptions);
         AudioTrack audioTrack = factory.createAudioTrack("audioTrack", audioSource);
-
         peerConnection.addTrack(audioTrack, List.of("stream"));
-
         for (RTCRtpTransceiver transceiver : peerConnection.getTransceivers()) {
             MediaStreamTrack track = transceiver.getSender().getTrack();
-
             if (nonNull(track) && track.getKind().equals(MediaStreamTrack.AUDIO_TRACK_KIND)) {
                 transceiver.setDirection(direction);
-                ((AudioTrack) track).addSink(
-                        (bytes, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames) -> {
-                        }); //log.info("data : " + Arrays.toString(bytes)));
                 break;
             }
         }
-
-        RTCRtpReceiver receiver = peerConnection.getReceivers()[0];
-        //((AudioTrack) receiver.getTrack()).addSink(                (bytes, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames) -> log.info(                        "data : " + Arrays.toString(bytes)));
     }
 
     private void addDataChannel() {
         RTCDataChannelInit dict = new RTCDataChannelInit();
-        dict.protocol = "demo-messaging";
-
-        dataChannel = peerConnection.createDataChannel("data", dict);
+        dataChannel = peerConnection.createDataChannel("PosInfo", dict);
+        initDataChannel(dataChannel);
     }
 
     private void initDataChannel(final RTCDataChannel channel) {
@@ -299,6 +279,7 @@ public class PeerConnectionClient implements PeerConnectionObserver {
                 });
             }
 
+
             @Override
             public void onStateChange() {
                 execute(() -> {
@@ -310,7 +291,7 @@ public class PeerConnectionClient implements PeerConnectionObserver {
 
             @Override
             public void onMessage(RTCDataChannelBuffer buffer) {
-                //does nothing!! so don't send any message to me.
+                //don't send any message, this will do nothing!
             }
         });
     }
@@ -318,22 +299,14 @@ public class PeerConnectionClient implements PeerConnectionObserver {
     private void getStats() {
         execute(() -> {
             peerConnection.getStats(report -> {
-                if (nonNull(peerConnectionContext.onStatsReport)) {
-                    peerConnectionContext.onStatsReport.accept(report);
-                    log.info(report.getStats().toString());
-                }
+                log.info(report.getStats().toString());
             });
         });
     }
 
     public void setSessionDescription(RTCSessionDescription description) {
         execute(() -> {
-            peerConnection.setRemoteDescription(description, new SetSDObserver() {
-                @Override
-                public void onSuccess() {
-                    super.onSuccess();
-                }
-            });
+            peerConnection.setRemoteDescription(description, new SetSDObserver());
         });
     }
 
@@ -350,7 +323,6 @@ public class PeerConnectionClient implements PeerConnectionObserver {
     public void removeIceCandidates(RTCIceCandidate[] candidates) {
         execute(() -> {
             drainIceCandidates();
-
             peerConnection.removeIceCandidates(candidates);
         });
     }
@@ -373,14 +345,13 @@ public class PeerConnectionClient implements PeerConnectionObserver {
         peerConnection.setLocalDescription(description, new SetSDObserver() {
             @Override
             public void onSuccess() {
-                //super.onSuccess();
+                super.onSuccess();
                 try {
-                    signalingClient.send(contact, description, peerConnectionContext.uniqueId);
+                    signalingClient.sendSdpOffer(contact, description, peerConnectionContext.uniqueId);
                 } catch (Exception e) {
                     log.error("Send RTCSessionDescription failed", e);
                 }
             }
-
         });
     }
 
@@ -401,6 +372,28 @@ public class PeerConnectionClient implements PeerConnectionObserver {
         } catch (Exception e) {
             log.error("Execute task failed");
         }
+    }
+
+    @Override
+    public void onSubscribe(Subscription subscription) {
+        this.subscription = subscription;
+        subscription.request(1);
+    }
+
+    @Override
+    public void onNext(String item) {
+        this.sendMessage(item);
+        subscription.request(1);
+    }
+
+    @Override
+    public void onError(Throwable throwable) {
+        log.error(throwable.getMessage());
+    }
+
+    @Override
+    public void onComplete() {
+
     }
 
 
