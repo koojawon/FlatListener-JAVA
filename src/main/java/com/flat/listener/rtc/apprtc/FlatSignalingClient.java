@@ -3,6 +3,7 @@ package com.flat.listener.rtc.apprtc;
 import com.flat.listener.rtc.SignalingClient;
 import com.flat.listener.rtc.SignalingListener;
 import com.flat.listener.rtc.model.Contact;
+import com.flat.listener.rtc.model.RabbitMessage;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import lombok.RequiredArgsConstructor;
@@ -24,8 +25,6 @@ public class FlatSignalingClient implements SignalingClient {
     @Autowired
     private RabbitTemplate rabbitTemplate;
     private SignalingListener listener;
-
-    @Autowired
     private JsonObjectEncoder encoder;
 
 

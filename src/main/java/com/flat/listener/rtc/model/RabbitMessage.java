@@ -1,4 +1,4 @@
-package com.flat.listener.rtc.apprtc;
+package com.flat.listener.rtc.model;
 
 import lombok.Getter;
 
@@ -8,12 +8,12 @@ public class RabbitMessage {
     @Getter
     private final Object object;
 
-    RabbitMessage(ID id) {
+    public RabbitMessage(ID id) {
         this(id, null);
     }
 
 
-    RabbitMessage(ID id, Object object) {
+    public RabbitMessage(ID id, Object object) {
         this.id = id;
         this.object = object;
     }

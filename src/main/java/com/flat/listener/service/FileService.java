@@ -111,7 +111,6 @@ public class FileService {
     private void postResult(String filename) {
         MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
         multipartBodyBuilder.part("multipartFile", new FileSystemResource(path + filename + ".mxl"));
-        //multipartBodyBuilder.part("multipartFile", new FileSystemResource(path + filename + ".json"));
         postFile(multipartBodyBuilder);
     }
 

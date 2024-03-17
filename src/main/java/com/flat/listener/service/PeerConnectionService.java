@@ -3,11 +3,11 @@ package com.flat.listener.service;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import com.flat.listener.config.Configuration;
-import com.flat.listener.rtc.PeerConnectionClient;
 import com.flat.listener.rtc.SignalingClient;
 import com.flat.listener.rtc.SignalingListener;
+import com.flat.listener.rtc.apprtc.PeerConnectionClient;
 import com.flat.listener.rtc.model.Contact;
+import com.flat.listener.rtc.model.PeerConnectionConfiguration;
 import com.flat.listener.rtc.model.PeerConnectionContext;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
@@ -37,7 +37,7 @@ public class PeerConnectionService implements SignalingListener {
 
 
     @Autowired
-    PeerConnectionService(Configuration config, SignalingClient client) {
+    PeerConnectionService(PeerConnectionConfiguration config, SignalingClient client) {
         signalingClient = client;
         signalingClient.setSignalingListener(this);
         connections = new HashMap<>();
@@ -50,7 +50,7 @@ public class PeerConnectionService implements SignalingListener {
         activeContact = contact;
         CompletableFuture.runAsync(() -> {
             createPeerConnection(activeContact).initCall();
-            enableStats(true);
+            enableStats(false);
         }).join();
     }
 
@@ -79,21 +79,12 @@ public class PeerConnectionService implements SignalingListener {
         log.error(message);
     }
 
-    public void dispose() {
-        executor.shutdown();
-    }
-
-
-    public CompletableFuture<Void> sendMessage(String message, Contact toContact) {
-        var peerConnectionClient = getPeerConnectionClient(toContact);
-        return peerConnectionClient.sendMessage(message);
-    }
-
     public void enableStats(boolean active) {
-        var peerConnectionClient = getPeerConnectionClient(activeContact);
-
-        if (nonNull(peerConnectionClient)) {
-            peerConnectionClient.enableStatsEvents(active, 5000);
+        if (active) {
+            var peerConnectionClient = getPeerConnectionClient(activeContact);
+            if (nonNull(peerConnectionClient)) {
+                peerConnectionClient.enableStatsEvents(5000);
+            }
         }
     }
 

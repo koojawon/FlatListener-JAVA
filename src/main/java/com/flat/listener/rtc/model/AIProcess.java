@@ -22,11 +22,14 @@ public class AIProcess {
         publisher = new SubmissionPublisher<>();
     }
 
-    public void start() {
+    public void start(String fileName) {
         try {
-            Process process = Runtime.getRuntime().exec("programName");
+            Process process = Runtime.getRuntime()
+                    .exec("python3 ./flat/flat.py --score_midi_path ./flat/data/" + fileName
+                            + ".mid --mode stream --backend timestamp --backend_output stdout");
             bufferedWriter = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
             bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            startRead();
         } catch (IOException e) {
             log.error("child process start failed!! : {}", e.getMessage());
         }
@@ -34,19 +37,17 @@ public class AIProcess {
 
     public void writeData(byte[] data) {
         try {
-            
             char[] buf = new char[data.length];
             for (int i = 0; i < buf.length; i++) {
                 buf[i] = (char) data[i];
             }
-
             bufferedWriter.write(buf);
         } catch (IOException e) {
             log.error("Write error!! : {}", e.getMessage());
         }
     }
 
-    public void startRead() {
+    private void startRead() {
         Thread thread = new Thread(
                 () -> {
                     String s;

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class JsonObjectEncoder {
 
-    private Gson gson;
+    private final Gson gson = new Gson();
 
     public String toOfferJson(Contact contact, RTCSessionDescription sdp, String uuid) {
         JsonObject jsonObject = new JsonObject();

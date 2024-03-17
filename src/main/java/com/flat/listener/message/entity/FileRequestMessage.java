@@ -1,5 +1,6 @@
 package com.flat.listener.message.entity;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -7,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 @Data
 @Builder
 @RequiredArgsConstructor
+@AllArgsConstructor
 public class FileRequestMessage {
-    private final String fileUid;
+    private String fileUid;
 }

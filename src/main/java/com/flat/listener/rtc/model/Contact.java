@@ -8,8 +8,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class Contact {
     private final String id;
+    private final String fileName;
 
     public Contact() {
+        this.fileName = null;
         id = null;
     }
 }

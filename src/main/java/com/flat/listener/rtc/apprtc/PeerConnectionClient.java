@@ -1,12 +1,14 @@
-package com.flat.listener.rtc;
+package com.flat.listener.rtc.apprtc;
 
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import com.flat.listener.config.Configuration;
+import com.flat.listener.rtc.SignalingClient;
 import com.flat.listener.rtc.model.AIProcess;
 import com.flat.listener.rtc.model.Contact;
+import com.flat.listener.rtc.model.PeerConnectionConfiguration;
 import com.flat.listener.rtc.model.PeerConnectionContext;
+import com.google.gson.Gson;
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver;
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.PeerConnectionObserver;
@@ -48,7 +50,7 @@ import lombok.extern.slf4j.Slf4j;
 public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<String> {
 
     private final ExecutorService executor;
-    private final Configuration config;
+    private final PeerConnectionConfiguration config;
     private final Contact contact;
     private final SignalingClient signalingClient;
     private final PeerConnectionContext peerConnectionContext;
@@ -70,7 +72,7 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
     public PeerConnectionClient(Contact contact, PeerConnectionContext context,
                                 SignalingClient signalingClient,
                                 ExecutorService executor) {
-        this.config = new Configuration();
+        this.config = new PeerConnectionConfiguration();
         this.contact = contact;
         this.peerConnectionContext = context;
         this.signalingClient = signalingClient;
@@ -92,22 +94,19 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
         });
     }
 
-    public void enableStatsEvents(boolean enable, int periodMs) {
-        if (enable) {
-            try {
-                statsTimer = new Timer();
-                statsTimer.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        getStats();
-                    }
-                }, 0, periodMs);
-            } catch (Exception e) {
-                log.error("Can not schedule statistics timer", e);
-            }
-        } else {
-            statsTimer.cancel();
+    public void enableStatsEvents(int periodMs) {
+        try {
+            statsTimer = new Timer();
+            statsTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    getStats();
+                }
+            }, 0, periodMs);
+        } catch (Exception e) {
+            log.error("Can not schedule statistics timer", e);
         }
+
     }
 
     @Override
@@ -176,7 +175,7 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
         log.info("found track : {}", track.getKind());
         if (track.getKind().equals(MediaStreamTrack.AUDIO_TRACK_KIND)) {
             AudioTrack audioTrack = (AudioTrack) track;
-            aiProcess.start();
+            aiProcess.start(this.contact.getFileName());
             aiProcess.asPublisher().subscribe(this);
             audioTrack.addSink((bytes, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames) -> {
                 aiProcess.writeData(bytes);
@@ -299,7 +298,8 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
     private void getStats() {
         execute(() -> {
             peerConnection.getStats(report -> {
-                log.info(report.getStats().toString());
+                Gson gson = new Gson();
+                log.info(gson.toJson(report.getStats()));
             });
         });
     }
