@@ -40,7 +40,7 @@ public class AIProcess {
         }
     }
 
-    public void writeData(byte[] data) {
+    public synchronized void writeData(byte[] data) {
         if (e != null) {
             try {
                 log.info("Writing data to the stream.");
