@@ -1,10 +1,9 @@
 package com.flat.listener.rtc.model;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.OutputStream;
 import java.util.concurrent.Flow.Publisher;
 import java.util.concurrent.SubmissionPublisher;
 import lombok.extern.slf4j.Slf4j;
@@ -15,8 +14,10 @@ import org.springframework.stereotype.Component;
 public class AIProcess {
 
     private final SubmissionPublisher<String> publisher;
-    private BufferedWriter bufferedWriter;
+    public Thread thread;
     private BufferedReader bufferedReader;
+    private Process process;
+    private OutputStream e;
 
     public AIProcess() {
         publisher = new SubmissionPublisher<>();
@@ -24,31 +25,31 @@ public class AIProcess {
 
     public void start(String fileName) {
         try {
-            Process process = Runtime.getRuntime()
-                    .exec("python3 ./flat/flat.py --score_midi_path ./flat/data/" + fileName
-                            + ".mid --mode stream --backend timestamp --backend_output stdout");
-            bufferedWriter = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
-            bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            startRead();
-        } catch (IOException e) {
+            ProcessBuilder processBuilder = new ProcessBuilder("python",
+                    "C:/Users/jawon/Downloads/flat_test/argparse.py");
+            process = processBuilder.start();
+            if (process.isAlive()) {
+                log.info("successfully started, state : {}", process.isAlive());
+                e = process.getOutputStream();
+                bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                startRead();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
             log.error("child process start failed!! : {}", e.getMessage());
         }
     }
 
     public void writeData(byte[] data) {
         try {
-            char[] buf = new char[data.length];
-            for (int i = 0; i < buf.length; i++) {
-                buf[i] = (char) data[i];
-            }
-            bufferedWriter.write(buf);
+            e.write(data);
         } catch (IOException e) {
-            log.error("Write error!! : {}", e.getMessage());
+            e.printStackTrace();
         }
     }
 
     private void startRead() {
-        Thread thread = new Thread(
+        thread = new Thread(
                 () -> {
                     String s;
                     while (true) {
@@ -56,10 +57,9 @@ public class AIProcess {
                             if ((s = bufferedReader.readLine()) == null) {
                                 break;
                             }
-                            if (!s.isEmpty()) {
-                                publisher.submit(s);
-                            }
+                            publisher.submit(s);
                         } catch (IOException e) {
+                            e.printStackTrace();
                             throw new RuntimeException(e);
                         }
                     }
@@ -69,6 +69,8 @@ public class AIProcess {
     }
 
     public void stopRead() {
+        process.destroy();
+        thread.interrupt();
         publisher.close();
     }
 

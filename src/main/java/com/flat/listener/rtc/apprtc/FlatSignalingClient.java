@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class FlatSignalingClient implements SignalingClient {
 
+    private final JsonObjectEncoder encoder;
     @Value("${rabbitmq.routing.key}")
     private String routingKey;
     @Value("${rabbitmq.exchange.name}")
@@ -25,8 +26,6 @@ public class FlatSignalingClient implements SignalingClient {
     @Autowired
     private RabbitTemplate rabbitTemplate;
     private SignalingListener listener;
-    private JsonObjectEncoder encoder;
-
 
     @Override
     public void joinRoom(Contact asContact) throws Exception {

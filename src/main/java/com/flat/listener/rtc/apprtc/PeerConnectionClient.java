@@ -127,18 +127,18 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
     @Override
     public void onIceConnectionChange(RTCIceConnectionState state) {
         PeerConnectionObserver.super.onIceConnectionChange(state);
-        log.info("ice state changed : " + state.toString());
+        log.info("ice state changed : {}", state.toString());
     }
 
     @Override
     public void onIceGatheringChange(RTCIceGatheringState state) {
         PeerConnectionObserver.super.onIceGatheringChange(state);
-        log.info("gathering state changed : " + state.toString());
+        log.info("gathering state changed : {}", state.toString());
     }
 
     @Override
     public void onConnectionChange(RTCPeerConnectionState state) {
-        log.info("connection state changed : " + state.toString());
+        log.info("connection state changed : {}", state.toString());
     }
 
 
@@ -177,9 +177,8 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
             AudioTrack audioTrack = (AudioTrack) track;
             aiProcess.start(this.contact.getFileName());
             aiProcess.asPublisher().subscribe(this);
-            audioTrack.addSink((bytes, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames) -> {
-                aiProcess.writeData(bytes);
-            });
+            audioTrack.addSink(
+                    (bytes, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames) -> aiProcess.writeData(bytes));
         }
     }
 
@@ -201,6 +200,7 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
                 remoteDataChannel = null;
             }
             if (nonNull(peerConnection)) {
+                peerConnection.getTransceivers()[0].getReceiver().getTrack().setEnabled(false);
                 peerConnection.close();
                 peerConnection = null;
             }

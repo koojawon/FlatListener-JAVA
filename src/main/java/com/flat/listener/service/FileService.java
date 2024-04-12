@@ -1,11 +1,11 @@
 package com.flat.listener.service;
 
 import com.flat.listener.message.entity.FileRequestMessage;
+import com.google.gson.Gson;
 import jakarta.annotation.PostConstruct;
 import java.io.File;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -27,33 +27,39 @@ import reactor.core.publisher.Mono;
 public class FileService {
 
     private final WebClient webClient = WebClient.builder().build();
+    private final Gson gson = new Gson();
     @Value("${uploadPath}")
     private String path;
-
     @Value("${serverIp}")
     private String ip;
 
     @PostConstruct
     public void init() {
         File file = new File(path);
-        if (file.mkdirs()) {
-            if (!(file.setExecutable(true) && file.setReadable(true) && file.setWritable(true))) {
-                log.error("Directory Authority Set Failed!!");
+        if (!file.exists()) {
+            if (file.mkdirs()) {
+                String osName = System.getProperty("os.name").toLowerCase();
+                if (osName.contains("linux") && !(file.setExecutable(true)
+                        && file.setReadable(true) && file.setWritable(true))) {
+                    log.error("Directory Authority Set Failed!!");
+                }
+                log.info("Directory created!!");
+            } else {
+                log.error("Directory creation failed!!");
             }
         } else {
-            log.error("Directory creation failed!!");
+            log.info("Directory exists...");
         }
     }
 
     public void getFile(FileRequestMessage fileRequestMessage) {
-
         Flux<DataBuffer> dataBuffer = webClient
                 .get()
                 .uri(uriBuilder -> uriBuilder
-                        .scheme("http")
+                        .scheme("https")
                         .host(ip)
-                        .path("/files/pdf")
-                        .queryParam("fileUid", fileRequestMessage.getFileUid()).build())
+                        .path("/file/pdf/" + fileRequestMessage.getFileUid())
+                        .build())
                 .retrieve()
                 .onStatus(
                         httpStatus ->
@@ -61,12 +67,10 @@ public class FileService {
                         clientResponse -> clientResponse.createException()
                                 .flatMap(
                                         it -> Mono.error(new RuntimeException(
-                                                "code : " + clientResponse.statusCode() + "PDF retrieve fail!!")))
+                                                "code : " + clientResponse.statusCode() + " PDF retrieve fail!!")))
                 )
                 .bodyToFlux(DataBuffer.class)
-                .doOnComplete(() -> {
-                    log.info("file downloaded!!");
-                })
+                .doOnComplete(() -> log.info("file downloaded!!"))
                 .onErrorResume(throwable -> {
                     log.error(throwable.getMessage());
                     return Mono.error(new RuntimeException(throwable));
@@ -80,7 +84,7 @@ public class FileService {
         DataBufferUtils.write(dataBuffer, Paths.get(path + fileRequestMessage.getFileUid() + ".pdf"),
                         StandardOpenOption.CREATE)
                 .share()
-                .doOnSuccess(unused -> handlePdf(fileRequestMessage.getFileUid()))
+                //.doOnSuccess(unused -> handlePdf(fileRequestMessage.getFileUid()))
                 .doOnError(exception -> {
                     log.error(exception.getMessage());
                     Mono.error(new RuntimeException(exception));
@@ -90,14 +94,16 @@ public class FileService {
 
     private void handlePdf(String fileName) {
         log.info("handling file :" + fileName);
-        String filePath = path + fileName;
+        String filePath = path + fileName + ".pdf";
         try {
             if (new ProcessExecutor()
-                    .command("python", "C:/Users/madab/pdf-to-mxl-converter/main.py", "-data", filePath)
+                    .command("C:/Program Files/Audiveris/bin/Audiveris.bat", "-batch", "-export", "-output",
+                            "C:/Flat/mxl/output", "-option",
+                            "org.audiveris.omr.step.LoadStep.maxPixelCount=200000000", filePath)
                     .redirectOutput(Slf4jStream.ofCaller().asInfo())
                     .start()
                     .getFuture()
-                    .get(30, TimeUnit.SECONDS)
+                    .get()
                     .getExitValue() != 0) {
                 throw new RuntimeException("Execution Failed!!");
             }
@@ -110,7 +116,7 @@ public class FileService {
 
     private void postResult(String filename) {
         MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
-        multipartBodyBuilder.part("multipartFile", new FileSystemResource(path + filename + ".mxl"));
+        multipartBodyBuilder.part("files", new FileSystemResource("C:/Flat/mxl/output/" + filename + ".mxl"));
         postFile(multipartBodyBuilder);
     }
 
@@ -119,9 +125,9 @@ public class FileService {
         webClient
                 .post()
                 .uri(uriBuilder -> uriBuilder
-                        .scheme("http")
+                        .scheme("https")
                         .host(ip)
-                        .path("/files/upload")
+                        .path("/file")
                         .build())
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(multipartBodyBuilder.build()))

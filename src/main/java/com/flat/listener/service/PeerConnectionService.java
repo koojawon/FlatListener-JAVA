@@ -97,8 +97,8 @@ public class PeerConnectionService implements SignalingListener {
         }
         CompletableFuture<Void> close = peerConnectionClient.close();
         close.thenRun(() -> activeContact = null);
+        close.join();
         removePeerConnectionClient(activeContact);
-        //dispose();
     }
 
     private CompletableFuture<Void> closeConnections() {

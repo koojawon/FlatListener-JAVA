@@ -24,6 +24,7 @@ dependencies {
     implementation 'org.zeroturnaround:zt-exec:1.12'
 
     implementation "dev.onvoid.webrtc:webrtc-java:0.8.0"
+    implementation group: "dev.onvoid.webrtc", name: "webrtc-java", version: "0.8.0", classifier: "windows-x86_64"
     implementation 'com.google.code.gson:gson'
     implementation 'org.springframework.boot:spring-boot-starter-websocket:3.2.1'
 
