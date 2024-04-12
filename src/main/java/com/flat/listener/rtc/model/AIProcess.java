@@ -41,10 +41,16 @@ public class AIProcess {
     }
 
     public void writeData(byte[] data) {
-        try {
-            e.write(data);
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (e != null) {
+            try {
+                log.info("Writing data to the stream.");
+                e.write(data);
+                // e.flush();
+            } catch (IOException ex) {
+                log.error("Failed to write data: {}", ex.getMessage(), ex);
+            }
+        } else {
+            log.error("OutputStream not initialized or closed.");
         }
     }
 
