@@ -377,7 +377,7 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
     @Override
     public void onSubscribe(Subscription subscription) {
         this.subscription = subscription;
-        subscription.request(1);
+        this.subscription.request(1);
     }
 
     @Override
@@ -407,7 +407,7 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
         @Override
         public void onFailure(String error) {
             execute(() -> {
-                log.error("Create RTCSessionDescription failed: " + error);
+                log.error("Create RTCSessionDescription failed: {}", error);
             });
         }
 
@@ -429,7 +429,7 @@ public class PeerConnectionClient implements PeerConnectionObserver, Subscriber<
         @Override
         public void onFailure(String error) {
             execute(() -> {
-                log.error("Set RTCSessionDescription failed: " + error);
+                log.error("Set RTCSessionDescription failed: {}", error);
             });
         }
     }
